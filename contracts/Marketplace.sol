@@ -158,24 +158,36 @@ contract MarketPlace is ReentrancyGuard {
     }
 
     //could be used for the caller => (itemsOwner == msg.sender)
-    function getListedItemsOf(address itemsOwner) public view returns (Listing[] memory) {
-        uint16 ownerItemsCount = _ownerToItemsCount[itemsOwner];
+    function getItemsOf(address itemsOwner) public view returns (Listing[] memory) {
 
-        Listing[] memory items = new Listing[](ownerItemsCount);
-        uint itemsCount = 0;
-        for (uint i = 0; i < _listingsIds.current(); i++) {
-            // try other than storage
+        uint totalItemsCount = _listingsIds.current();
+        uint itemCount = 0;
+
+        //Important to get a count of all the NFTs that belong to the user before we can make an array for them
+        for(uint i=0; i < totalItemsCount; i++)
+        {
+            if(_listings[i+1].owner == itemsOwner || _listings[i+1].seller == itemsOwner){
+                itemCount += 1;
+            }
+        }
+
+        //Once you have the count of relevant NFTs, create an array then store all the NFTs in it
+        Listing[] memory items = new Listing[](itemCount);
+        uint currentIndex = 0;
+        
+        for(uint i=0; i < totalItemsCount; i++) {
             Listing storage currentListing = _listings[i + 1];
 
-            if (currentListing.seller == itemsOwner && currentListing.status == Status.Active) {
-                    items[itemsCount] = currentListing;
-                    itemsCount++;
-                }
+            if (currentListing.seller == itemsOwner && currentListing.owner == itemsOwner) {
+                items[currentIndex] = currentListing;
+                currentIndex++;
+            }
+
         }
         return items;
     }
 
-    function getNotListedItems() public view returns (Listing[] memory) {
+    /* function getNotListedItems() public view returns (Listing[] memory) {
     
         uint listingsCount = _listingsIds.current();
         uint notListedCount = 0;
@@ -194,7 +206,7 @@ contract MarketPlace is ReentrancyGuard {
             }
         }
         return items;
-    }
+    } */
 
     function makeAnOffer(uint listingId, uint offerAmount) public {
         Listing storage listing = _listings[listingId];
