@@ -6,26 +6,25 @@
 // global scope, and execute the script.
 const hre = require("hardhat");
 
-async function main() {
-  const currentTimestampInSeconds = Math.round(Date.now() / 1000);
-  const ONE_YEAR_IN_SECS = 365 * 24 * 60 * 60;
-  const unlockTime = currentTimestampInSeconds + ONE_YEAR_IN_SECS;
+async function deployNftMarketplaceContract() {
+  await hre.run('compile');
 
-  const lockedAmount = hre.ethers.utils.parseEther("1");
+  const marketPlaceFactory = await ethers.getContractFactory("MarketPlace");
+  const marketPlace = await marketPlaceFactory.deploy();
+  await marketPlace.deployed();
 
-  const Lock = await hre.ethers.getContractFactory("Lock");
-  const lock = await Lock.deploy(unlockTime, { value: lockedAmount });
+  const marketItemFactory = await ethers.getContractFactory("MarketItem");
+  const marketItem = await marketItemFactory.deploy(marketPlace.address);
+  await marketItem.deployed();
 
-  await lock.deployed();
+  await hre.run('print', { 
+    marketPlaceAddress: marketPlace.address,
+    marketItemAddress: marketItem.address
+  });
 
-  console.log(
-    `Lock with 1 ETH and unlock timestamp ${unlockTime} deployed to ${lock.address}`
-  );
+  /* await hre.run("verify:verify", {
+    address: marketPlace.address,
+  }); */
 }
 
-// We recommend this pattern to be able to use async/await everywhere
-// and properly handle errors.
-main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});
+module.exports = deployNftMarketplaceContract;

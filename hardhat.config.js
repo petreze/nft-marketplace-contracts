@@ -2,6 +2,8 @@ require("hardhat/config");
 require("@nomicfoundation/hardhat-toolbox");
 require("solidity-coverage");
 require("@nomiclabs/hardhat-etherscan");
+require("@nomiclabs/hardhat-ethers");
+require("@nomicfoundation/hardhat-chai-matchers");
 
 
 /* const config: HardhatUserConfig = {
@@ -33,13 +35,15 @@ module.exports = {
 
 task("deploy", "Deploys contract on a provided network")
     .setAction(async () => {
-        const deployLibraryContract = require("./scripts/deploy");
-        await deployLibraryContract();
+        const deployNftMarketplaceContract = require("./scripts/deploy");
+        await deployNftMarketplaceContract();
 });
 
-subtask("print", "Prints useful information")
-    .addParam("address", "The address of the contract after deployment")
+subtask("print", "Prints useful information after deployment")
+    .addParam("marketPlaceAddress", "The address of the MarketPlace contract after deployment")
+    .addParam("marketItemAddress", "The address of the MarketItem contract after deployment")
     .setAction(async (taskArgs) => {
-      console.log(`Library Contract address: ${taskArgs.address}`);
+      console.log(`MarketPlace address: ${taskArgs.marketPlaceAddress}`);
+      console.log(`MarketItem address: ${taskArgs.marketItemAddress}`);
       console.log('Deployment successfull!');
     });

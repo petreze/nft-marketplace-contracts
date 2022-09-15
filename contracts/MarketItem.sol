@@ -2,68 +2,52 @@
 pragma solidity ^0.8.1;
 pragma abicoder v2;
 
-import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
+import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
+import "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
+import "@openzeppelin/contracts/utils/Counters.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
-/**
- * @dev Required interface of an ERC721 compliant contract.
- */
-contract MarketItem is IERC721, Ownable {
+contract MarketItem is ERC721, ERC721URIStorage, Ownable {
 
-    constructor(string memory _name, string memory symbol) {
+    using Counters for Counters.Counter;
+    Counters.Counter private _tokenIds;
 
+    address marketplaceAddress;
+
+    event Minted(uint256);
+
+    constructor(address _marketplaceAddress) ERC721("Lime Collection", "LC") {
+            marketplaceAddress = _marketplaceAddress;
     }
-   
-    function balanceOf(address owner) public view override returns (uint256 balance) {
+    
+    function _burn(uint256 tokenId) internal override(ERC721, ERC721URIStorage) {
+        super._burn(tokenId);
+    }
+
+    function burn(uint256 tokenId) public {
+        _burn(tokenId);
+    }
+
+    function tokenURI(uint256 tokenId)
+        public
+        view
+        override(ERC721, ERC721URIStorage)
+        returns (string memory)
+    {
+        return super.tokenURI(tokenId);
+    }
+
+    function mint(string memory _tokenURI) public returns(uint) {
+        _tokenIds.increment();
+        uint newTokenId = _tokenIds.current();
+
+        _safeMint(msg.sender, newTokenId);
+        _setTokenURI(newTokenId, _tokenURI);
         
-    }
+        approve(marketplaceAddress, newTokenId);
 
-    function ownerOf(uint256 tokenId) public view override returns (address owner) {
-        
-    }
+        emit Minted(newTokenId);
 
-    function safeTransferFrom(
-        address from,
-        address to,
-        uint256 tokenId,
-        bytes calldata data
-    ) public override {
-
-    }
-
-    function safeTransferFrom(
-        address from,
-        address to,
-        uint256 tokenId
-    ) public override {
-
-    }
-
-    function transferFrom(
-        address from,
-        address to,
-        uint256 tokenId
-    ) public override {
-
-    }
-
-    function approve(address to, uint256 tokenId) public override {
-
-    }
-
-    function setApprovalForAll(address operator, bool _approved) public override {
-
-    }
-
-    function getApproved(uint256 tokenId) public view override returns (address operator) {
-
-    }
-
-    function isApprovedForAll(address owner, address operator) public view override returns (bool) {
-
-    }
-
-    function supportsInterface(bytes4 interfaceId) public view override returns (bool) {
-
+        return newTokenId;
     }
 }
