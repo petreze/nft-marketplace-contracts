@@ -116,7 +116,6 @@ const assert = require("assert");
       const { minter } = await loadFixture(accountsFixture);
       
       await marketItem.connect(minter).mint("uri");
-      //await marketItem.connect(minter).approve(marketPlace.address, tokenId.toString());
 
       await marketPlace.connect(minter).listItem(
         marketItem.address,
@@ -127,7 +126,6 @@ const assert = require("assert");
       );
 
       await marketPlace.getListedItem(tokenId.toString()).then(item => {
-        console.log(item);
         assert.equal(item.token, marketItem.address, "ERC721 token address does not match");
         assert.equal(item.seller, minter.address, "Seller address does not match");
         assert.equal(item.owner, marketPlace.address, "Owner address does not match");
@@ -300,4 +298,167 @@ const assert = require("assert");
       )).to.be.revertedWith("Listing is not active");
     });
     
+    it('should prevent the caller to make an offer to its own item', async function() {
+      const { minter } = await loadFixture(accountsFixture);
+
+      await marketItem.connect(minter).mint("uri");
+
+
+      expect(marketPlace.connect(minter).makeAnOffer(
+        1, marketItem.address, 15
+        )).to.be.revertedWith("The caller cannot make an offer to his own item");
+    });
+    
+    it('should prevent making an offer to an already listed item', async function() {
+      const { minter, buyer } = await loadFixture(accountsFixture);
+
+      await marketItem.connect(minter).mint("uri");
+
+      await marketPlace.connect(minter).listItem(
+        marketItem.address,
+        tokenId.toString(),
+        PRICE.toString(), { 
+          value: LISTING_FEE.toString()
+        }
+      );
+
+      expect(marketPlace.connect(buyer).makeAnOffer(
+        1, marketItem.address, 15
+        )).to.be.revertedWith("An offer can be made only to non active item");
+    });
+
+    it('should prevent caller to accept an offer because he is not the seller', async function() {
+      const { minter, buyer } = await loadFixture(accountsFixture);
+
+      await marketItem.connect(minter).mint("uri");
+
+
+      await marketPlace.connect(buyer).makeAnOffer(1, marketItem.address, 15);
+      
+      expect(marketPlace.connect(buyer).acceptOffer(
+        1, marketItem.address
+        )).to.be.revertedWith("Caller should be the seller of the item");
+    });
+
+    it('should prevent the caller to accept an offer if the item is listed', async function() {
+      const { minter, buyer } = await loadFixture(accountsFixture);
+
+      await marketItem.connect(minter).mint("uri");
+
+      await marketPlace.connect(buyer).makeAnOffer(1, marketItem.address, 15);
+      
+      await marketPlace.connect(minter).listItem(
+        marketItem.address,
+        tokenId.toString(),
+        PRICE.toString(), { 
+          value: LISTING_FEE.toString()
+        }
+      );
+
+      expect(marketPlace.connect(minter).acceptOffer(
+        1, marketItem.address
+        )).to.be.revertedWith("An offer cannot be accepted if the item is listed");
+    });
+
+    it('the caller should accept an offer', async function() {
+      const { minter, buyer } = await loadFixture(accountsFixture);
+
+      await marketItem.connect(minter).mint("uri");
+
+      await marketPlace.connect(buyer).makeAnOffer(1, marketItem.address, 15);      
+      await marketPlace.connect(minter).acceptOffer(1, marketItem.address, {
+        value: LISTING_FEE.toString()
+      });
+
+      return marketItem.ownerOf(tokenId.toString()).then(owner => {
+        assert.equal(owner, buyer.address, 'Buyer should be the new owner of the item')
+      });
+    });
+
+    it('should test `getItemsOf()`', async function() {
+      const { minter, buyer} = await loadFixture(accountsFixture);
+      
+      await marketItem.connect(minter).mint("uri");
+
+      await marketPlace.connect(minter).listItem(
+        marketItem.address,
+        tokenId.toString(),
+        PRICE.toString(), { 
+          value: LISTING_FEE.toString()
+        }
+      );
+      
+      await marketItem.connect(minter).mint("uri2");
+
+      await marketPlace.connect(minter).listItem(
+        marketItem.address,
+        2,
+        PRICE.toString(), { 
+          value: LISTING_FEE.toString()
+        }
+      );
+
+      let [ item1, item2 ] = await marketPlace.getItemsOf(minter.address);
+
+      //token 1
+      assert.equal(item1.id, 1, "Listing id does not match");
+      assert.equal(item1.token, marketItem.address, "ERC721 token address does not match");
+      assert.equal(item1.seller, minter.address, "Seller of the item does not match");
+      assert.equal(item1.owner, marketPlace.address, "Owner should be the marketplace after listing the item");
+      assert.equal(item1.tokenId, 1, "TokenId does not match");
+      assert.equal(item1.price, PRICE.toString(), "Price does not match");
+      assert.equal(item1.status, 0, "Status does not match");
+      
+      //token 2
+      assert.equal(item2.id, 2, "Listing id does not match");
+      assert.equal(item2.token, marketItem.address, "ERC721 token address does not match");
+      assert.equal(item2.seller, minter.address, "Seller of the item does not match");
+      assert.equal(item2.owner, marketPlace.address, "Owner should be the marketplace after listing the item");
+      assert.equal(item2.tokenId, 2, "Token id does not match");
+      assert.equal(item2.price, PRICE.toString(), "Price does not match");
+      assert.equal(item2.status, 0, "Status does not match");
+
+
+      //minting 3rd token and testing `getAllItems()`
+      //should return all listed items including the previous 2 plus the new one
+      await marketItem.connect(buyer).mint("uri3");
+      
+      await marketPlace.connect(buyer).listItem(
+        marketItem.address,
+        3,
+        PRICE.toString(), { 
+          value: LISTING_FEE.toString()
+        }
+      );
+
+      let [ item3, item4, item5 ] = await marketPlace.getAllItems();
+
+      //token 1
+      assert.equal(item3.id, 1, "Listing id does not match");
+      assert.equal(item3.token, marketItem.address, "ERC721 token address does not match");
+      assert.equal(item3.seller, minter.address, "Seller of the item does not match");
+      assert.equal(item3.owner, marketPlace.address, "Owner should be the marketplace after listing the item");
+      assert.equal(item3.tokenId, 1, "TokenId does not match");
+      assert.equal(item3.price, PRICE.toString(), "Price does not match");
+      assert.equal(item3.status, 0, "Status does not match");
+      
+      //token 2
+      assert.equal(item4.id, 2, "Listing id does not match");
+      assert.equal(item4.token, marketItem.address, "ERC721 token address does not match");
+      assert.equal(item4.seller, minter.address, "Seller of the item does not match");
+      assert.equal(item4.owner, marketPlace.address, "Owner should be the marketplace after listing the item");
+      assert.equal(item4.tokenId, 2, "Token id does not match");
+      assert.equal(item4.price, PRICE.toString(), "Price does not match");
+      assert.equal(item4.status, 0, "Status does not match");
+      
+      //token 3
+      assert.equal(item5.id, 3, "Listing id does not match");
+      assert.equal(item5.token, marketItem.address, "ERC721 token address does not match");
+      assert.equal(item5.seller, buyer.address, "Seller of the item does not match");
+      assert.equal(item5.owner, marketPlace.address, "Owner should be the marketplace after listing the item");
+      assert.equal(item5.tokenId, 3, "Token id does not match");
+      assert.equal(item5.price, PRICE.toString(), "Price does not match");
+      assert.equal(item5.status, 0, "Status does not match");
+      
+    });
 });

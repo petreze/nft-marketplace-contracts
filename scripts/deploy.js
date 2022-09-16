@@ -22,9 +22,29 @@ async function deployNftMarketplaceContract() {
     marketItemAddress: marketItem.address
   });
 
+  saveMetadataToFE(marketPlace, "MarketPlace");
+  saveMetadataToFE(marketItem, "MarketItem");
+
   /* await hre.run("verify:verify", {
     address: marketPlace.address,
   }); */
+}
+
+function saveMetadataToFE(contract, name) {
+  const fs = require("fs");
+  //const contractsDir = __dirname + "/../fe/contracts";
+  const contractsDir = __dirname + "/../../nft-marketplace-fe/contracts";
+
+  if (!fs.existsSync(contractsDir)) {
+    fs.mkdirSync(contractsDir);
+  }
+
+  const contractArtifact = artifacts.readArtifactSync(name);
+
+  fs.writeFileSync(
+    contractsDir + `/${name}.json`,
+    JSON.stringify(contractArtifact.abi, null, 2)
+  );
 }
 
 module.exports = deployNftMarketplaceContract;

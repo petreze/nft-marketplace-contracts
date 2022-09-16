@@ -6,6 +6,7 @@ import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
 import "@openzeppelin/contracts/utils/Counters.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
+import "./MarketPlace.sol";
 
 contract MarketItem is ERC721, ERC721URIStorage, Ownable {
 
@@ -45,6 +46,9 @@ contract MarketItem is ERC721, ERC721URIStorage, Ownable {
         _setTokenURI(newTokenId, _tokenURI);
         
         approve(marketplaceAddress, newTokenId);
+
+        MarketPlace marketPlace = MarketPlace(marketplaceAddress);
+        marketPlace.initItem(newTokenId, address(this), msg.sender);
 
         emit Minted(newTokenId);
 

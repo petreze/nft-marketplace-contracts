@@ -12,7 +12,8 @@ contract MarketPlace is ReentrancyGuard {
     enum Status {
         Active,
         Sold,
-        Cancelled
+        Cancelled,
+        None
     }
 
     struct Listing {
@@ -23,6 +24,15 @@ contract MarketPlace is ReentrancyGuard {
         uint tokenId;
         uint price;
         Status status;
+    }
+
+    struct Offer {
+        uint offerId;
+        uint listingId;
+        address token;
+        uint tokenId;
+        address offerMadeBy;
+        uint offerAmount;
     }
 
 	event Listed(
@@ -50,14 +60,14 @@ contract MarketPlace is ReentrancyGuard {
 	);
 
     using Counters for Counters.Counter;
-    Counters.Counter private _listingsIds;
-    Counters.Counter private _soldItems;
+    Counters.Counter private _itemIds;
+    Counters.Counter private _offerIds;
 
     mapping(uint => Listing) private _listings;
-    mapping(address => uint16) private _ownerToItemsCount;
-    mapping(address => mapping(uint => uint)) private _userToItemOffer;
+    mapping(uint => Offer) private _listingToOffer;
+    mapping(uint => mapping(address => Listing)) private _tokenIdToListing;
 
-    address payable private owner;
+    address payable private immutable owner;
 
     uint FEE = 0.00001 ether;
 
@@ -70,46 +80,65 @@ contract MarketPlace is ReentrancyGuard {
       FEE = _fee;
     }
 
-    function getListingFee() public view returns (uint256) {
+    function getListingFee() external view returns (uint256) {
       return FEE;
     }
 
-    function getListedItem(uint listingId) public view returns (Listing memory) {
+    function getListedItem(uint listingId) external view returns (Listing memory) {
         return _listings[listingId];
     }
 
-    function listItem(address token, uint tokenId, uint price) public payable nonReentrant {
+    function initItem(uint tokenId, address token, address tokenOwner) external {
+        require(msg.sender == token, "Caller should be the owner of the marketplace");
+        
+        _itemIds.increment();
+        uint id = _itemIds.current();
+
+        _tokenIdToListing[tokenId][token] = Listing(
+            id,
+            token,
+            address(0),
+            tokenOwner,
+            tokenId,
+            0,
+            Status.None
+        );
+    }
+
+    function listItem(address token, uint tokenId, uint price) external payable nonReentrant {
         require(price > 0, "Price should be more than 0");
         require(msg.value >= FEE, "Not enough funds to cover the listing fee");
 
         IERC721(token).transferFrom(msg.sender, address(this), tokenId);
 
-        _listingsIds.increment();
-        uint256 id = _listingsIds.current();
+        Listing storage listing = _tokenIdToListing[tokenId][token];
+        listing.seller = msg.sender;
+        listing.owner = address(this);
+        listing.price = price;
+        listing.status = Status.Active;
 
-        _ownerToItemsCount[msg.sender]++;
-        
-        _listings[tokenId] = Listing(
-            id,
-            token,
-            msg.sender,
-            address(this),
-            tokenId,
-            price,
-            Status.Active
+
+        _listings[listing.id] = Listing(
+            listing.id,
+            listing.token,
+            listing.seller,
+            listing.owner,
+            listing.tokenId,
+            listing.price,
+            listing.status
         );
 
         emit Listed(
-            id,
-			tokenId,
-			msg.sender,
-			address(this),
-			token,
-			price
+            listing.id,
+			listing.tokenId,
+			listing.seller,
+			listing.owner,
+			listing.token,
+			listing.price
 		);
     }
 
-    function buyItem(uint listingId) public payable nonReentrant {
+    function buyItem(uint listingId) external payable nonReentrant {
         
         Listing storage listing = _listings[listingId];
 
@@ -124,10 +153,6 @@ contract MarketPlace is ReentrancyGuard {
         listing.owner = msg.sender;
         listing.status = Status.Sold;
         
-        _ownerToItemsCount[listing.seller]--;
-        
-        _soldItems.increment();
-
         emit Sold(
             listing.id,
             listing.tokenId,
@@ -138,7 +163,7 @@ contract MarketPlace is ReentrancyGuard {
         );
     }
 
-    function cancelListedItem(uint listingId) public nonReentrant {
+    function cancelListedItem(uint listingId) external nonReentrant {
         Listing storage listing = _listings[listingId];
 
         require(listing.seller == msg.sender, "Only the seller can cancel the listing of his item");
@@ -148,7 +173,6 @@ contract MarketPlace is ReentrancyGuard {
 
         listing.status = Status.Cancelled;
         listing.owner = msg.sender;
-        _ownerToItemsCount[msg.sender]--;
 
         emit Cancelled(
             listingId,
@@ -157,16 +181,30 @@ contract MarketPlace is ReentrancyGuard {
         );
     }
 
-    //could be used for the caller => (itemsOwner == msg.sender)
-    function getItemsOf(address itemsOwner) public view returns (Listing[] memory) {
+    function getAllItems() external view returns (Listing[] memory) {
+        uint itemsCount = _itemIds.current();
+        Listing[] memory items = new Listing[](itemsCount);
+        uint currentIndex = 0;
 
-        uint totalItemsCount = _listingsIds.current();
+        for(uint i = 0; i < itemsCount; i++) {
+            Listing storage currentItem = _listings[i + 1];
+            items[currentIndex] = currentItem;
+            currentIndex += 1;
+        }
+        return items;
+    }
+
+    //could be used for the caller => (itemsOwner == msg.sender)
+    function getItemsOf(address itemsOwner) external view returns (Listing[] memory) {
+
+        uint totalItemsCount = _itemIds.current();
         uint itemCount = 0;
 
         //Important to get a count of all the NFTs that belong to the user before we can make an array for them
-        for(uint i=0; i < totalItemsCount; i++)
-        {
-            if(_listings[i+1].owner == itemsOwner || _listings[i+1].seller == itemsOwner){
+        for(uint i = 0; i < totalItemsCount; i++) {
+            Listing storage currentListing = _listings[i + 1];
+            
+            if(currentListing.owner == itemsOwner || currentListing.seller == itemsOwner){
                 itemCount += 1;
             }
         }
@@ -178,7 +216,7 @@ contract MarketPlace is ReentrancyGuard {
         for(uint i=0; i < totalItemsCount; i++) {
             Listing storage currentListing = _listings[i + 1];
 
-            if (currentListing.seller == itemsOwner && currentListing.owner == itemsOwner) {
+            if (currentListing.seller == itemsOwner || currentListing.owner == itemsOwner) {
                 items[currentIndex] = currentListing;
                 currentIndex++;
             }
@@ -187,33 +225,44 @@ contract MarketPlace is ReentrancyGuard {
         return items;
     }
 
-    /* function getNotListedItems() public view returns (Listing[] memory) {
-    
-        uint listingsCount = _listingsIds.current();
-        uint notListedCount = 0;
-        for (uint i = 0; i < listingsCount; i++) {
-            if (_listings[i + 1].status != Status.Active) {
-                notListedCount++;
-            }
-        }
+    function makeAnOffer(uint tokenId, address token, uint offerAmount) external {
 
-        Listing[] memory items = new Listing[](notListedCount);
-        uint itemsCount = 0;
-        for (uint i = 0; i < listingsCount; i++) {
-            if (_listings[i + 1].status != Status.Active) {
-                items[itemsCount] = _listings[i + 1];
-                itemsCount++;
-            }
-        }
-        return items;
-    } */
-
-    function makeAnOffer(uint listingId, uint offerAmount) public {
-        Listing storage listing = _listings[listingId];
+        Listing storage listing = _tokenIdToListing[tokenId][token];
 
         require(listing.status != Status.Active, "An offer can be made only to non active item");
-        require(listing.owner != msg.sender, "The caller should not be the owner of the item");
-                
-        _userToItemOffer[msg.sender][listingId] = offerAmount;
+        require(listing.owner != msg.sender, "The caller cannot make an offer to his own item");
+
+        _offerIds.increment();
+        uint id = _offerIds.current();
+
+        _listingToOffer[listing.id] = Offer(
+            id,
+            listing.id,
+            listing.token,
+            listing.tokenId,
+            msg.sender,
+            offerAmount
+        );
+    }
+
+    function acceptOffer(uint tokenId, address token) external payable nonReentrant {
+        Listing storage listing = _tokenIdToListing[tokenId][token];
+        Offer storage offer = _listingToOffer[listing.id];
+        
+        require(listing.owner == msg.sender, "Caller should be the seller of the item");
+        require(listing.status != Status.Active, "An offer cannot be accepted if the item is listed");
+
+        IERC721(listing.token).transferFrom(listing.owner, offer.offerMadeBy, listing.tokenId);
+        payable(listing.owner).transfer(offer.offerAmount);
+        owner.transfer(FEE);
+
+        emit Sold(
+            listing.id,
+            listing.tokenId,
+            listing.seller,
+            listing.owner,
+            listing.token,
+            listing.price
+        );
     }
 }
